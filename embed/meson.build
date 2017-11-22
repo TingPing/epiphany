@@ -37,6 +37,7 @@ libephyembed_deps = [
   glib_dep,
   gtk_dep,
   icu_uc_dep,
+  libdazzle_dep,
   libsecret_dep,
   libsoup_dep,
   m_dep,

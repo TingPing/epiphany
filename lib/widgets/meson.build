@@ -7,7 +7,6 @@ enums = gnome.mkenums_simple('ephy-widgets-type-builtins',
 )
 
 libephywidgets_sources = [
-  'contrib/gd-two-lines-renderer.c',
   'contrib/nautilus-floating-bar.c',
   'ephy-certificate-dialog.c',
   'ephy-downloads-popover.c',
@@ -30,6 +29,7 @@ libephywidgets_deps = [
   gio_dep,
   glib_dep,
   gtk_dep,
+  libdazzle_dep,
   libsoup_dep,
   webkit2gtk_dep
 ]
