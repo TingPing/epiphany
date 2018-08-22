@@ -313,3 +313,26 @@ ephy_web_extension_proxy_history_clear (EphyWebExtensionProxy *web_extension)
                      web_extension->cancellable,
                      NULL, NULL);
 }
+
+void
+ephy_web_extension_proxy_password_cached_users_response (EphyWebExtensionProxy *web_extension,
+                                                         GList                 *users)
+{
+  g_return_if_fail (users != NULL);
+
+  if (!web_extension->proxy)
+    return;
+
+  GList *l;
+  g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_STRING_ARRAY);
+  for (l = users; l != NULL; l = l->next) 
+    g_variant_builder_add (&builder, "s", l->data);
+
+  g_dbus_proxy_call (web_extension->proxy,
+                     "PasswordCachedUsersResponse",
+                     g_variant_new ("(as)", &builder),
+                     G_DBUS_CALL_FLAGS_NONE,
+                     -1,
+                     web_extension->cancellable,
+                     NULL, NULL);
+}

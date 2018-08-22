@@ -54,11 +54,12 @@ struct _EphyWebExtension {
   GArray *page_created_signals_pending;
 
   EphySyncService *sync_service;
-  EphyPasswordManager *password_manager;
   GHashTable *form_auth_data_save_requests;
   EphyWebOverviewModel *overview_model;
   EphyPermissionsManager *permissions_manager;
   EphyUriTester *uri_tester;
+
+  gboolean is_private_profile;
 };
 
 static const char introspection_xml[] =
@@ -89,6 +90,12 @@ static const char introspection_xml[] =
   "   <arg type='s' name='host' direction='in'/>"
   "  </method>"
   "  <method name='HistoryClear'/>"
+  "  <method name='PasswordQueryResponse'>"
+  "    <arg type='m(ss)' name='credentials' direction='in'/>"
+  "  </method>"
+  "  <method name='PasswordCachedUsersResponse'>"
+  "    <arg type='as' name='users' direction='in'/>"
+  "  </method>"
   " </interface>"
   "</node>";
 
@@ -378,7 +385,7 @@ web_page_form_controls_associated (WebKitWebPage    *web_page,
                                           G_CALLBACK (sensitive_form_message_serializer), NULL, NULL,
                                           G_TYPE_STRING, 2,
                                           G_TYPE_UINT64, G_TYPE_BOOLEAN);
-  remember_passwords = extension->password_manager &&
+  remember_passwords = !extension->is_private_profile &&
                        g_settings_get_boolean (EPHY_SETTINGS_WEB, EPHY_PREFS_WEB_REMEMBER_PASSWORDS);
   js_result = jsc_value_object_invoke_method (js_ephy,
                                               "formControlsAssociated",
@@ -533,16 +540,16 @@ handle_method_call (GDBusConnection       *connection,
     if (!request)
       return;
 
-    if (should_store) {
-      ephy_password_manager_save (extension->password_manager,
-                                  request->origin,
-                                  request->target_origin,
-                                  request->username,
-                                  request->password,
-                                  request->username_field_name,
-                                  request->password_field_name,
-                                  request->is_new);
-    }
+    // if (FALSE) {
+    //   ephy_password_manager_save (extension->password_manager,
+    //                               request->origin,
+    //                               request->target_origin,
+    //                               request->username,
+    //                               request->password,
+    //                               request->username_field_name,
+    //                               request->password_field_name,
+    //                               request->is_new);
+    // }
     g_hash_table_remove (requests, GINT_TO_POINTER (request_id));
   } else if (g_strcmp0 (method_name, "HistorySetURLs") == 0) {
     if (extension->overview_model) {
@@ -600,6 +607,11 @@ handle_method_call (GDBusConnection       *connection,
     if (extension->overview_model)
       ephy_web_overview_model_clear (extension->overview_model);
     g_dbus_method_invocation_return_value (invocation, NULL);
+  } else if (g_strcmp0 (method_name, "PasswordCachedUsersResponse") == 0) {
+    g_auto(GStrv) users = NULL;
+
+    //g_variant_get (parameters, "(as)", &users);
+    // TODO: Send to js
   }
 }
 
@@ -609,77 +621,77 @@ static const GDBusInterfaceVTable interface_vtable = {
   NULL
 };
 
-static void
-ephy_prefs_passwords_sync_enabled_cb (GSettings *settings,
-                                      char      *key,
-                                      gpointer   user_data)
-{
-  EphyWebExtension *extension;
-  EphySynchronizableManager *manager;
+// static void
+// ephy_prefs_passwords_sync_enabled_cb (GSettings *settings,
+//                                       char      *key,
+//                                       gpointer   user_data)
+// {
+//   EphyWebExtension *extension;
+//   EphySynchronizableManager *manager;
 
-  extension = EPHY_WEB_EXTENSION (user_data);
-  manager = EPHY_SYNCHRONIZABLE_MANAGER (extension->password_manager);
+//   extension = EPHY_WEB_EXTENSION (user_data);
+//   manager = EPHY_SYNCHRONIZABLE_MANAGER (extension->password_manager);
 
-  if (g_settings_get_boolean (settings, key))
-    ephy_sync_service_register_manager (extension->sync_service, manager);
-  else
-    ephy_sync_service_unregister_manager (extension->sync_service, manager);
-}
+//   if (g_settings_get_boolean (settings, key))
+//     ephy_sync_service_register_manager (extension->sync_service, manager);
+//   else
+//     ephy_sync_service_unregister_manager (extension->sync_service, manager);
+// }
 
-static void
-ephy_web_extension_create_sync_service (EphyWebExtension *extension)
-{
-  EphySynchronizableManager *manager;
+// static void
+// ephy_web_extension_create_sync_service (EphyWebExtension *extension)
+// {
+//   EphySynchronizableManager *manager;
 
-  g_assert (EPHY_IS_WEB_EXTENSION (extension));
-  g_assert (EPHY_IS_PASSWORD_MANAGER (extension->password_manager));
-  g_assert (!extension->sync_service);
+//   g_assert (EPHY_IS_WEB_EXTENSION (extension));
+//   g_assert (EPHY_IS_PASSWORD_MANAGER (extension->password_manager));
+//   g_assert (!extension->sync_service);
 
-  extension->sync_service = ephy_sync_service_new (FALSE);
-  manager = EPHY_SYNCHRONIZABLE_MANAGER (extension->password_manager);
+//   extension->sync_service = ephy_sync_service_new (FALSE);
+//   manager = EPHY_SYNCHRONIZABLE_MANAGER (extension->password_manager);
 
-  if (ephy_sync_utils_passwords_sync_is_enabled ())
-    ephy_sync_service_register_manager (extension->sync_service, manager);
+//   if (ephy_sync_utils_passwords_sync_is_enabled ())
+//     ephy_sync_service_register_manager (extension->sync_service, manager);
 
-  g_signal_connect (EPHY_SETTINGS_SYNC, "changed::"EPHY_PREFS_SYNC_PASSWORDS_ENABLED,
-                    G_CALLBACK (ephy_prefs_passwords_sync_enabled_cb), extension);
-}
+//   g_signal_connect (EPHY_SETTINGS_SYNC, "changed::"EPHY_PREFS_SYNC_PASSWORDS_ENABLED,
+//                     G_CALLBACK (ephy_prefs_passwords_sync_enabled_cb), extension);
+// }
 
-static void
-ephy_web_extension_destroy_sync_service (EphyWebExtension *extension)
-{
-  EphySynchronizableManager *manager;
+// static void
+// ephy_web_extension_destroy_sync_service (EphyWebExtension *extension)
+// {
+//   EphySynchronizableManager *manager;
 
-  g_assert (EPHY_IS_WEB_EXTENSION (extension));
-  g_assert (EPHY_IS_PASSWORD_MANAGER (extension->password_manager));
-  g_assert (EPHY_IS_SYNC_SERVICE (extension->sync_service));
+//   g_assert (EPHY_IS_WEB_EXTENSION (extension));
+//   g_assert (EPHY_IS_PASSWORD_MANAGER (extension->password_manager));
+//   g_assert (EPHY_IS_SYNC_SERVICE (extension->sync_service));
 
-  manager = EPHY_SYNCHRONIZABLE_MANAGER (extension->password_manager);
-  ephy_sync_service_unregister_manager (extension->sync_service, manager);
-  g_signal_handlers_disconnect_by_func (EPHY_SETTINGS_SYNC,
-                                        ephy_prefs_passwords_sync_enabled_cb,
-                                        extension);
+//   manager = EPHY_SYNCHRONIZABLE_MANAGER (extension->password_manager);
+//   ephy_sync_service_unregister_manager (extension->sync_service, manager);
+//   g_signal_handlers_disconnect_by_func (EPHY_SETTINGS_SYNC,
+//                                         ephy_prefs_passwords_sync_enabled_cb,
+//                                         extension);
 
-  g_clear_object (&extension->sync_service);
-}
+//   g_clear_object (&extension->sync_service);
+// }
 
-static void
-ephy_prefs_sync_user_cb (GSettings *settings,
-                         char      *key,
-                         gpointer   user_data)
-{
-  EphyWebExtension *extension = EPHY_WEB_EXTENSION (user_data);
+// static void
+// ephy_prefs_sync_user_cb (GSettings *settings,
+//                          char      *key,
+//                          gpointer   user_data)
+// {
+//   EphyWebExtension *extension = EPHY_WEB_EXTENSION (user_data);
 
-  /* If the sync user has changed we need to destroy the previous sync service
-   * (which is no longer valid because the user specific data has been cleared)
-   * and create a new one which will load the new user specific data. This way
-   * we will correctly upload new saved passwords in the future.
-   */
-  if (ephy_sync_utils_user_is_signed_in ())
-    ephy_web_extension_create_sync_service (extension);
-  else if (extension->sync_service)
-    ephy_web_extension_destroy_sync_service (extension);
-}
+//   /* If the sync user has changed we need to destroy the previous sync service
+//    * (which is no longer valid because the user specific data has been cleared)
+//    * and create a new one which will load the new user specific data. This way
+//    * we will correctly upload new saved passwords in the future.
+//    */
+//   if (ephy_sync_utils_user_is_signed_in ())
+//     ephy_web_extension_create_sync_service (extension);
+//   else if (extension->sync_service)
+//     ephy_web_extension_destroy_sync_service (extension);
+// }
 
 static void
 ephy_web_extension_dispose (GObject *object)
@@ -689,12 +701,6 @@ ephy_web_extension_dispose (GObject *object)
   g_clear_object (&extension->uri_tester);
   g_clear_object (&extension->overview_model);
   g_clear_object (&extension->permissions_manager);
-
-  if (extension->password_manager) {
-    if (extension->sync_service)
-      ephy_web_extension_destroy_sync_service (extension);
-    g_clear_object (&extension->password_manager);
-  }
 
   if (extension->form_auth_data_save_requests) {
     g_hash_table_destroy (extension->form_auth_data_save_requests);
@@ -790,7 +796,7 @@ authorize_authenticated_peer_cb (GDBusAuthObserver *observer,
 static void
 js_log (const char *message)
 {
-  LOG ("%s", message);
+  g_print ("%s\n", message);
 }
 
 static char *
@@ -911,10 +917,10 @@ window_object_cleared_cb (WebKitScriptWorld *world,
                                                  js_context,
                                                  js_ephy);
 
-  if (extension->password_manager) {
-    ephy_password_manager_export_to_js_context (extension->password_manager,
-                                                js_context,
-                                                js_ephy);
+  if (!extension->is_private_profile) {
+    g_autoptr(JSCValue) js_password_manager_ctor = jsc_value_object_get_property (js_ephy, "PasswordManager");
+    g_autoptr(JSCValue) js_password_manager = jsc_value_constructor_call (js_password_manager_ctor, G_TYPE_NONE);
+    jsc_value_object_set_property (js_ephy, "passwordManager", js_password_manager);
 
     js_function = jsc_value_new_function (js_context,
                                           "autoFill",
@@ -969,17 +975,8 @@ ephy_web_extension_initialize (EphyWebExtension   *extension,
                     extension);
 
   extension->extension = g_object_ref (wk_extension);
-  if (!is_private_profile) {
-    extension->password_manager = ephy_password_manager_new ();
 
-    if (is_browser_mode) {
-      if (ephy_sync_utils_user_is_signed_in ())
-        ephy_web_extension_create_sync_service (extension);
-
-      g_signal_connect (EPHY_SETTINGS_SYNC, "changed::"EPHY_PREFS_SYNC_USER,
-                        G_CALLBACK (ephy_prefs_sync_user_cb), extension);
-    }
-  }
+  extension->is_private_profile = is_private_profile;
 
   extension->permissions_manager = ephy_permissions_manager_new ();
 

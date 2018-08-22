@@ -45,5 +45,7 @@ void                   ephy_web_extension_proxy_history_delete_url              
 void                   ephy_web_extension_proxy_history_delete_host                       (EphyWebExtensionProxy *web_extension,
                                                                                            const char            *host);
 void                   ephy_web_extension_proxy_history_clear                             (EphyWebExtensionProxy *web_extension);
+void                   ephy_web_extension_proxy_password_cached_users_response            (EphyWebExtensionProxy *web_extension,
+                                                                                           GList                 *users);
 
 G_END_DECLS

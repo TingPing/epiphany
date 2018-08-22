@@ -309,6 +309,45 @@ Ephy.PreFillUserMenu = class PreFillUserMenu
     }
 };
 
+Ephy.PasswordManager = class PasswordManager
+{
+    constructor()
+    {
+        this._pendingPromises = [];
+        this._promiseCounter = 0;
+    }
+
+    query(origin, targetOrigin, username, usernameField, passwordField)
+    {
+        Ephy.log('query called');
+        window.webkit.messageHandlers.passwordManagerQuery.postMessage(null
+            //origin, targetOrigin, username, usernameField, passwordField
+        );
+        return Promise.resolve({
+            username: 'foo',
+            password: 'bar',
+        }); // or null;
+    }
+
+    save(origin, targetOrigin, username, password, usernameField, passwordField, isNew)
+    {
+        window.webkit.messageHandlers.passwordManagerSave.postMessage(null
+            //origin, targetOrigin, username, password, usernameField, passwordField, isNew
+        );
+    }
+
+    cachedUsers(origin)
+    {
+        Ephy.log('Cached users called - 1');
+        return new Promise((resolve, reject) => {
+            window.webkit.messageHandlers.passwordManagerCachedUsers.postMessage({
+                origin: origin,
+            });
+            this._pendingPromises += {id: this._promiseCounter++, resolver: resolve}
+        });
+    }
+}
+
 Ephy.FormManager = class FormManager
 {
     constructor(pageID, form)
@@ -367,18 +406,21 @@ Ephy.FormManager = class FormManager
         Ephy.log('Hooking and pre-filling a form');
 
         if (this._formAuth.usernameNode) {
-            let users = Ephy.passwordManager.cachedUsers(this._formAuth.url.origin);
-            if (users.length > 1) {
-                Ephy.log('More than one password saved, hooking menu for choosing which on focus');
-                this._preFillUserMenu = new Ephy.PreFillUserMenu(this, this._formAuth.usernameNode, users, this._formAuth.passwordNode);
-            } else {
-                Ephy.log('Single item in cached_users, not hooking menu for choosing.');
-            }
+            Ephy.passwordManager.cachedUsers(this._formAuth.url.origin).then((users) => {
+                Ephy.log("Here I am!");
+                if (users.length > 1) {
+                    Ephy.log('More than one password saved, hooking menu for choosing which on focus');
+                    this._preFillUserMenu = new Ephy.PreFillUserMenu(this, this._formAuth.usernameNode, users, this._formAuth.passwordNode);
+                } else {
+                    Ephy.log('Single item in cached_users, not hooking menu for choosing.');
+                }
+
+                this.preFill();
+            });
         } else {
             Ephy.log('No items in cached_users, not hooking menu for choosing.');
+            this.preFill();
         }
-
-        this.preFill();
     }
 
     preFill()

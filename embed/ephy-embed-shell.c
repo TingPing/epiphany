@@ -34,6 +34,7 @@
 #include "ephy-filters-manager.h"
 #include "ephy-flatpak-utils.h"
 #include "ephy-history-service.h"
+#include "ephy-password-manager.h"
 #include "ephy-profile-utils.h"
 #include "ephy-settings.h"
 #include "ephy-snapshot-service.h"
@@ -61,6 +62,7 @@ typedef struct {
   WebKitUserContentManager *user_content;
   EphyDownloadsManager *downloads_manager;
   EphyPermissionsManager *permissions_manager;
+  EphyPasswordManager *password_manager;
   EphyAboutHandler *about_handler;
   EphyViewSourceHandler *source_handler;
   char *guid;
@@ -166,6 +168,7 @@ ephy_embed_shell_dispose (GObject *object)
   g_clear_object (&priv->source_handler);
   g_clear_object (&priv->user_content);
   g_clear_object (&priv->downloads_manager);
+  g_clear_object (&priv->password_manager);
   g_clear_object (&priv->permissions_manager);
   g_clear_object (&priv->web_context);
   g_clear_pointer (&priv->guid, g_free);
@@ -296,6 +299,7 @@ web_extension_tls_error_page_message_received_cb (WebKitUserContentManager *mana
 {
   guint64 page_id;
 
+  g_print("tls error\n");
   page_id = jsc_value_to_double (webkit_javascript_result_get_js_value (message));
   g_signal_emit (shell, signals[ALLOW_TLS_CERTIFICATE], 0, page_id);
 }
@@ -321,6 +325,102 @@ web_extension_about_apps_message_received_cb (WebKitUserContentManager *manager,
   app_id = jsc_value_to_string (webkit_javascript_result_get_js_value (message));
   ephy_web_application_delete (app_id);
   g_free (app_id);
+}
+
+static void
+js_password_manager_query_finished_cb (GList    *records,
+                                       JSCValue *value)
+{
+  //   JSCContext *js_context;
+  // JSCValue *result, *value;
+  // EphyPasswordRecord *record;
+
+  // record = records && records->data ? EPHY_PASSWORD_RECORD (records->data) : NULL;
+  // js_context = jsc_value_get_context (resolve);
+
+  // if (record) {
+  //   JSCValue *property;
+
+  //   result = jsc_value_new_object (js_context, NULL, NULL);
+
+  //   property = jsc_value_new_string (js_context, ephy_password_record_get_username (record));
+  //   jsc_value_object_set_property (result, "username", property);
+  //   g_object_unref (property);
+
+  //   property = jsc_value_new_string (js_context, ephy_password_record_get_password (record));
+  //   jsc_value_object_set_property (result, "password", property);
+  //   g_object_unref (property);
+  // } else {
+  //   result = jsc_value_new_null (js_context);
+  // }
+
+  // value = jsc_value_function_call (resolve, JSC_TYPE_VALUE, result, G_TYPE_NONE);
+}
+
+static void
+web_extension_password_manager_query_received_cb (WebKitUserContentManager *manager,
+                                                  WebKitJavascriptResult   *message,
+                                                  EphyEmbedShell           *shell)
+{
+  EphyEmbedShellPrivate *priv = ephy_embed_shell_get_instance_private (shell);
+  JSCValue *value = webkit_javascript_result_get_js_value (message);
+  g_autofree char *origin = jsc_value_to_string (jsc_value_object_get_property (value, "origin"));
+  g_autofree char *target_origin = jsc_value_to_string (jsc_value_object_get_property (value, "targetOrigin"));
+  g_autofree char *username = jsc_value_to_string (jsc_value_object_get_property (value, "username"));
+  g_autofree char *username_field = jsc_value_to_string (jsc_value_object_get_property (value, "usernameField"));
+  g_autofree char *password_field = jsc_value_to_string (jsc_value_object_get_property (value, "passwordField"));
+  
+  ephy_password_manager_query (priv->password_manager,
+                               NULL,
+                               origin,
+                               target_origin,
+                               username,
+                               username_field,
+                               password_field,
+                               (EphyPasswordManagerQueryCallback)js_password_manager_query_finished_cb,
+                               g_object_ref (value));
+}
+
+static void
+web_extension_password_manager_save_received_cb (WebKitUserContentManager *manager,
+                                                 WebKitJavascriptResult   *message,
+                                                EphyEmbedShell           *shell)
+{
+  EphyEmbedShellPrivate *priv = ephy_embed_shell_get_instance_private (shell);
+  JSCValue *value = webkit_javascript_result_get_js_value (message);
+  g_autofree char *origin = jsc_value_to_string (jsc_value_object_get_property (value, "origin"));
+  g_autofree char *target_origin = jsc_value_to_string (jsc_value_object_get_property (value, "targetOrigin"));
+  g_autofree char *username = jsc_value_to_string (jsc_value_object_get_property (value, "username"));
+  g_autofree char *password = jsc_value_to_string (jsc_value_object_get_property (value, "password"));
+  g_autofree char *username_field = jsc_value_to_string (jsc_value_object_get_property (value, "usernameField"));
+  g_autofree char *password_field = jsc_value_to_string (jsc_value_object_get_property (value, "passwordField"));
+  gboolean is_new = jsc_value_to_boolean (jsc_value_object_get_property (value, "isNew"));
+
+  ephy_password_manager_save (priv->password_manager, origin, target_origin, username,
+                              password, username_field, password_field, is_new);
+}
+
+static void
+web_extension_password_manager_cached_users_received_cb (WebKitUserContentManager *manager,
+                                                         WebKitJavascriptResult   *message,
+                                                         EphyEmbedShell           *shell)
+{
+  EphyEmbedShellPrivate *priv = ephy_embed_shell_get_instance_private (shell);
+
+  JSCValue *value = webkit_javascript_result_get_js_value (message);
+  JSCContext *context = jsc_value_get_context (value);
+  g_autofree char *origin = jsc_value_to_string (jsc_value_object_get_property (value, "origin"));
+
+  GList *cached_users, *l;
+  g_autoptr(GPtrArray) retval = g_ptr_array_new_with_free_func (g_object_unref);
+
+  cached_users = ephy_password_manager_get_cached_users (priv->password_manager, origin);
+  for (l = priv->web_extensions; l; l = g_list_next (l)) {
+    EphyWebExtensionProxy *web_extension = (EphyWebExtensionProxy *)l->data;
+
+    // FIXME: If the one we want (and has the right origin) (and maybe check private profile here too?)
+    ephy_web_extension_proxy_password_cached_users_response (web_extension, cached_users);
+  }
 }
 
 static void
@@ -949,6 +1049,24 @@ ephy_embed_shell_startup (GApplication *application)
                     G_CALLBACK (web_extension_about_apps_message_received_cb),
                     shell);
 
+  webkit_user_content_manager_register_script_message_handler (priv->user_content,
+                                                               "passwordManagerQuery");
+  g_signal_connect (priv->user_content, "script-message-received::passwordManagerQuery",
+                    G_CALLBACK (web_extension_password_manager_query_received_cb),
+                    shell);
+
+  webkit_user_content_manager_register_script_message_handler (priv->user_content,
+                                                               "passwordManagerCachedUsers");
+  g_signal_connect (priv->user_content, "script-message-received::passwordManagerCachedUsers",
+                    G_CALLBACK (web_extension_password_manager_cached_users_received_cb),
+                    shell);
+
+  webkit_user_content_manager_register_script_message_handler (priv->user_content,
+                                                               "passwordManagerSave");
+  g_signal_connect (priv->user_content, "script-message-received::passwordManagerSave",
+                    G_CALLBACK (web_extension_password_manager_save_received_cb),
+                    shell);
+
   ephy_embed_shell_setup_process_model (shell);
   g_signal_connect (priv->web_context, "initialize-web-extensions",
                     G_CALLBACK (initialize_web_extensions),
@@ -958,6 +1076,20 @@ ephy_embed_shell_startup (GApplication *application)
   g_signal_connect (priv->web_context, "initialize-notification-permissions",
                     G_CALLBACK (initialize_notification_permissions),
                     shell);
+
+  priv->password_manager = ephy_password_manager_new ();
+
+  // if (!is_private_profile) {
+  //   extension->password_manager = ephy_password_manager_new ();
+
+  //   if (is_browser_mode) {
+  //     if (ephy_sync_utils_user_is_signed_in ())
+  //       ephy_web_extension_create_sync_service (extension);
+
+  //     g_signal_connect (EPHY_SETTINGS_SYNC, "changed::"EPHY_PREFS_SYNC_USER,
+  //                       G_CALLBACK (ephy_prefs_sync_user_cb), extension);
+  //   }
+  // }
 
   /* Favicon Database */
   if (priv->mode == EPHY_EMBED_SHELL_MODE_PRIVATE)
@@ -1033,6 +1165,9 @@ ephy_embed_shell_shutdown (GApplication *application)
   webkit_user_content_manager_unregister_script_message_handler (priv->user_content, "formAuthData");
   webkit_user_content_manager_unregister_script_message_handler (priv->user_content, "sensitiveFormFocused");
   webkit_user_content_manager_unregister_script_message_handler (priv->user_content, "aboutApps");
+  webkit_user_content_manager_unregister_script_message_handler (priv->user_content, "passwordManagerQuery");
+  webkit_user_content_manager_unregister_script_message_handler (priv->user_content, "passwordManagerSave");
+  webkit_user_content_manager_unregister_script_message_handler (priv->user_content, "passwordManagerCachedUsers");
 
   g_list_foreach (priv->web_extensions, (GFunc)ephy_embed_shell_unwatch_web_extension, application);
 
