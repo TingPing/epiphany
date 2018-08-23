@@ -59,8 +59,6 @@ struct _EphyWebExtension {
   EphyWebOverviewModel *overview_model;
   EphyPermissionsManager *permissions_manager;
   EphyUriTester *uri_tester;
-
-  WebKitScriptWorld *script_world;
 };
 
 static const char introspection_xml[] =
@@ -296,7 +294,6 @@ web_page_will_submit_form (WebKitWebPage            *web_page,
                            GPtrArray                *text_field_names,
                            GPtrArray                *text_field_values)
 {
-  EphyWebExtension *extension;
   gboolean form_submit_handled;
   JSCContext *js_context;
   JSCValue *js_ephy;
@@ -314,10 +311,9 @@ web_page_will_submit_form (WebKitWebPage            *web_page,
                      "ephy-form-submit-handled",
                      GINT_TO_POINTER (TRUE));
 
-  extension = ephy_web_extension_get ();
-  js_context = webkit_frame_get_js_context_for_script_world (source_frame, extension->script_world);
+  js_context = webkit_frame_get_js_context (source_frame);
   js_ephy = jsc_context_get_value (js_context, "Ephy");
-  js_form = webkit_frame_get_js_value_for_dom_object_in_script_world (frame, WEBKIT_DOM_OBJECT (dom_form), extension->script_world);
+  js_form = webkit_frame_get_js_value_for_dom_object (frame, WEBKIT_DOM_OBJECT (dom_form));
   js_requester = jsc_value_new_function (js_context,
                                          "saveAuthRequester",
                                          G_CALLBACK (save_auth_requester), NULL, NULL,
@@ -367,13 +363,13 @@ web_page_form_controls_associated (WebKitWebPage    *web_page,
   guint i;
 
   frame = webkit_web_page_get_main_frame (web_page);
-  js_context = webkit_frame_get_js_context_for_script_world (frame, extension->script_world);
+  js_context = webkit_frame_get_js_context (frame);
 
   form_controls = g_ptr_array_new_with_free_func (g_object_unref);
   for (i = 0; i < elements->len; ++i) {
     WebKitDOMObject *element = WEBKIT_DOM_OBJECT (g_ptr_array_index (elements, i));
 
-    g_ptr_array_add (form_controls, webkit_frame_get_js_value_for_dom_object_in_script_world (frame, element, extension->script_world));
+    g_ptr_array_add (form_controls, webkit_frame_get_js_value_for_dom_object (frame, element));
   }
 
   js_ephy = jsc_context_get_value (js_context, "Ephy");
@@ -404,16 +400,14 @@ web_page_context_menu (WebKitWebPage          *web_page,
                        WebKitWebHitTestResult *hit_test_result,
                        gpointer                user_data)
 {
-  EphyWebExtension *extension;
   char *string = NULL;
   GVariantBuilder builder;
   WebKitFrame *frame;
   JSCContext *js_context;
   JSCValue *js_value;
 
-  extension = ephy_web_extension_get ();
   frame = webkit_web_page_get_main_frame (web_page);
-  js_context = webkit_frame_get_js_context_for_script_world (frame, extension->script_world);
+  js_context = webkit_frame_get_js_context (frame);
 
   js_value = jsc_context_evaluate (js_context, "window.getSelection().toString();", -1);
   if (!jsc_value_is_null (js_value) && !jsc_value_is_undefined (js_value))
@@ -489,11 +483,6 @@ ephy_web_extension_page_created_cb (EphyWebExtension *extension,
                                     WebKitWebPage    *web_page)
 {
   guint64 page_id;
-  JSCContext *js_context;
-
-  /* Enforce the creation of the script world global context in the main frame */
-  js_context = webkit_frame_get_js_context_for_script_world (webkit_web_page_get_main_frame (web_page), extension->script_world);
-  g_object_unref (js_context);
 
   page_id = webkit_web_page_get_id (web_page);
   if (extension->dbus_connection)
@@ -717,7 +706,6 @@ ephy_web_extension_dispose (GObject *object)
     extension->page_created_signals_pending = NULL;
   }
 
-  g_clear_object (&extension->script_world);
   g_clear_object (&extension->dbus_connection);
   g_clear_object (&extension->extension);
 
@@ -975,8 +963,7 @@ ephy_web_extension_initialize (EphyWebExtension   *extension,
 
   extension->initialized = TRUE;
 
-  extension->script_world = webkit_script_world_new_with_name (guid);
-  g_signal_connect (extension->script_world,
+  g_signal_connect (webkit_script_world_get_default (),
                     "window-object-cleared",
                     G_CALLBACK (window_object_cleared_cb),
                     extension);
