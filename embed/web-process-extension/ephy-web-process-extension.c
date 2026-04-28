@@ -465,7 +465,7 @@ web_page_received_message (WebKitWebPage     *web_page,
     g_variant_get (parameters, "(sv)", &guid, &variant);
     dict = g_variant_dict_new (variant);
 
-    /* WebExtensionData vreated using create_web_extension_data is transferred to hash table */
+    /* WebExtensionData created using create_web_extension_data is transferred to hash table */
     g_hash_table_replace (extension->web_extensions, guid, create_web_extension_data (guid, dict));
   } else if (g_strcmp0 (name, "Adblock.SetForbidsAds") == 0) {
     GVariant *parameters;
@@ -571,7 +571,10 @@ web_page_send_request_cb (WebKitWebPage     *web_page,
   const char *page_uri;
   gboolean forbids_ads;
 
-  /* Only redirect when adblock is enabled for this page. */
+  /* Only redirect when adblock is enabled for this page.
+   * NOTE: g_object_get_data() returns NULL before the first Adblock.SetForbidsAds
+   * message is received; GPOINTER_TO_INT(NULL) == 0 == FALSE, which is the correct
+   * safe default (do not redirect until explicitly told to). */
   forbids_ads = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (web_page),
                                                     EPHY_ADBLOCK_FORBIDS_ADS_KEY));
   if (!forbids_ads)
