@@ -2149,6 +2149,15 @@ accept_navigation_policy_decision (EphyWindow           *window,
                                             webkit_web_view_get_user_content_manager (web_view),
                                             adblock_permission == EPHY_PERMISSION_DENY || adblock_permission == EPHY_PERMISSION_UNDECIDED);
 
+  /* Notify the web process extension whether adblock is active for this page,
+   * so that it can redirect YouTube ad SDK requests to our built-in stub. */
+  webkit_web_view_send_message_to_page (web_view,
+                                        webkit_user_message_new ("Adblock.SetForbidsAds",
+                                                                  g_variant_new ("b",
+                                                                                 adblock_permission == EPHY_PERMISSION_DENY ||
+                                                                                 adblock_permission == EPHY_PERMISSION_UNDECIDED)),
+                                        NULL, NULL, NULL);
+
   switch (autoplay_permission) {
     case EPHY_PERMISSION_UNDECIDED:
       website_policies = webkit_website_policies_new_with_policies ("autoplay", WEBKIT_AUTOPLAY_ALLOW_WITHOUT_SOUND, NULL);

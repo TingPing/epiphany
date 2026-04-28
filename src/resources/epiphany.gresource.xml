@@ -40,6 +40,7 @@
     <file preprocess="xml-stripblanks" compressed="true" alias="gtk/webapp-additional-urls-dialog.ui">resources/gtk/webapp-additional-urls-dialog.ui</file>
     <file>mask.glsl</file>
     <file alias="hush.json">../../third-party/hush/hush.json</file>
+    <file compressed="true" alias="adblock/google-ima.js">../../third-party/google-ima/google-ima.js</file>
   </gresource>
   <gresource prefix="/org/gnome/epiphany/page-templates">
     <file compressed="true">about.css</file>

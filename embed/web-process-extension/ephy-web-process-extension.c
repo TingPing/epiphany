@@ -66,6 +66,9 @@ G_DEFINE_FINAL_TYPE (EphyWebProcessExtension, ephy_web_process_extension, G_TYPE
 
 #define PAGE_IS_EXTENSION(web_page) (webkit_web_page_get_uri (web_page) && g_str_has_prefix (webkit_web_page_get_uri (web_page), "ephy-webextension:"))
 
+#define EPHY_ADBLOCK_FORBIDS_ADS_KEY "ephy-adblock-forbids-ads"
+#define EPHY_IMA_STUB_URI "ephy-resource:///org/gnome/epiphany/adblock/google-ima.js"
+
 /* ================ Private Ephy API ================ */
 
 static void
@@ -464,6 +467,17 @@ web_page_received_message (WebKitWebPage     *web_page,
 
     /* WebExtensionData vreated using create_web_extension_data is transferred to hash table */
     g_hash_table_replace (extension->web_extensions, guid, create_web_extension_data (guid, dict));
+  } else if (g_strcmp0 (name, "Adblock.SetForbidsAds") == 0) {
+    GVariant *parameters;
+    gboolean forbids_ads;
+
+    parameters = webkit_user_message_get_parameters (message);
+    if (!parameters)
+      return FALSE;
+
+    g_variant_get (parameters, "b", &forbids_ads);
+    g_object_set_data (G_OBJECT (web_page), EPHY_ADBLOCK_FORBIDS_ADS_KEY,
+                       GINT_TO_POINTER (forbids_ads));
   } else {
     g_warning ("Unhandled page message: %s", name);
     return FALSE;
@@ -524,6 +538,62 @@ ephy_web_extension_page_user_message_received_cb (WebKitWebPage     *page,
   }
 }
 
+static gboolean
+is_youtube_uri (const char *uri)
+{
+  g_autoptr (GUri) parsed = NULL;
+  const char *host;
+
+  if (!uri || !*uri)
+    return FALSE;
+
+  parsed = g_uri_parse (uri, G_URI_FLAGS_NONE, NULL);
+  if (!parsed)
+    return FALSE;
+
+  host = g_uri_get_host (parsed);
+  if (!host)
+    return FALSE;
+
+  return (g_strcmp0 (host, "www.youtube.com") == 0 ||
+          g_strcmp0 (host, "m.youtube.com") == 0 ||
+          g_strcmp0 (host, "music.youtube.com") == 0 ||
+          g_strcmp0 (host, "tv.youtube.com") == 0);
+}
+
+static gboolean
+web_page_send_request_cb (WebKitWebPage     *web_page,
+                          WebKitURIRequest  *request,
+                          WebKitURIResponse *redirected_response,
+                          gpointer           user_data)
+{
+  const char *request_uri;
+  const char *page_uri;
+  gboolean forbids_ads;
+
+  /* Only redirect when adblock is enabled for this page. */
+  forbids_ads = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (web_page),
+                                                    EPHY_ADBLOCK_FORBIDS_ADS_KEY));
+  if (!forbids_ads)
+    return FALSE;
+
+  /* Only redirect on YouTube pages. */
+  page_uri = webkit_web_page_get_uri (web_page);
+  if (!is_youtube_uri (page_uri))
+    return FALSE;
+
+  request_uri = webkit_uri_request_get_uri (request);
+  if (!request_uri)
+    return FALSE;
+
+  /* Redirect the Google IMA SDK loader to our built-in stub. */
+  if (g_str_has_prefix (request_uri, "https://imasdk.googleapis.com/js/sdkloader/ima3")) {
+    webkit_uri_request_set_uri (request, EPHY_IMA_STUB_URI);
+  }
+
+  return FALSE;
+}
+
 static void
 ephy_web_process_extension_page_created_cb (EphyWebProcessExtension *extension,
                                             WebKitWebPage           *web_page)
@@ -560,6 +630,9 @@ ephy_web_process_extension_page_created_cb (EphyWebProcessExtension *extension,
                              web_page, G_CONNECT_SWAPPED);
     g_signal_connect (web_page, "user-message-received",
                       G_CALLBACK (web_page_received_message),
+                      extension);
+    g_signal_connect (web_page, "send-request",
+                      G_CALLBACK (web_page_send_request_cb),
                       extension);
     g_signal_connect (web_page, "document-loaded",
                       G_CALLBACK (on_document_loaded_cb),

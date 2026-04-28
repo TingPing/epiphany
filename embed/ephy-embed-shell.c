@@ -657,6 +657,7 @@ ephy_resource_request_cb (WebKitURISchemeRequest *request)
   if (g_str_has_prefix (uri, "ephy-resource:") ||
       g_str_has_prefix (path, "/org/gnome/epiphany/page-icons/") ||
       g_str_has_prefix (path, "/org/gnome/epiphany/page-templates/") ||
+      g_str_has_prefix (path, "/org/gnome/epiphany/adblock/") ||
       (g_str_has_prefix (uri, "ephy-reader:") && g_str_has_prefix (path, "/org/gnome/epiphany/readability/")) ||
       (g_str_has_prefix (uri, EPHY_VIEW_SOURCE_SCHEME ":") && g_str_has_prefix (path, "/org/gnome/epiphany/highlightjs/"))) {
     stream = g_resources_open_stream (path, 0, &error);

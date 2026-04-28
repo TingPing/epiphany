@@ -1,0 +1,25 @@
+# google-ima.js – stub for the Google IMA SDK
+
+This file is a stub that replaces `https://imasdk.googleapis.com/js/sdkloader/ima3.js`
+so that the real Google Interactive Media Ads SDK is never loaded.
+
+## Source
+
+Based on uBlock Origin's `google-ima.js` resource:
+  https://github.com/gorhill/uBlock/blob/master/src/web_accessible_resources/google-ima.js
+
+Copyright Raymond Hill and uBlock Origin contributors.
+
+## License
+
+Mozilla Public License Version 2.0 (MPL-2.0).
+See https://www.mozilla.org/en-US/MPL/2.0/
+
+The MPL-2.0 is compatible with the GNU General Public License v3.0+ under
+which Epiphany is distributed; see
+https://www.gnu.org/licenses/license-list.en.html#MPL-2.0
+
+## Updating
+
+To update this stub, refer to the upstream source at the URL above and
+carry forward any bug-fixes while preserving the MPL-2.0 license header.
