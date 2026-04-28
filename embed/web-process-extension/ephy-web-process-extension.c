@@ -592,6 +592,7 @@ web_page_send_request_cb (WebKitWebPage     *web_page,
   /* Redirect the Google IMA SDK loader to our built-in stub. */
   if (g_str_has_prefix (request_uri, "https://imasdk.googleapis.com/js/sdkloader/ima3")) {
     webkit_uri_request_set_uri (request, EPHY_IMA_STUB_URI);
+    return TRUE;
   }
 
   return FALSE;
